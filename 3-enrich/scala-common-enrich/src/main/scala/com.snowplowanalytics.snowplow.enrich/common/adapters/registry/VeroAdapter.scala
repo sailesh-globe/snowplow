@@ -17,9 +17,6 @@ package common
 package adapters
 package registry
 
-// Java
-import com.fasterxml.jackson.core.JsonParseException
-
 // Scalaz
 import scalaz.Scalaz._
 
@@ -31,12 +28,10 @@ import org.json4s.jackson.JsonMethods._
 import com.snowplowanalytics.iglu.client.{Resolver, SchemaKey}
 
 // Joda Time
-import org.joda.time.{DateTime, DateTimeZone}
-import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
+import org.joda.time.DateTime
 
 // This project
 import com.snowplowanalytics.snowplow.enrich.common.loaders.CollectorPayload
-//import com.snowplowanalytics.snowplow.enrich.common.utils.{JsonUtils => JU}
 
 import scala.util.{Failure, Success, Try}
 
@@ -83,7 +78,10 @@ object VeroAdapter extends Adapter {
         case Success(p) => p.successNel
         case Failure(e) => s"$VendorName event failed to parse into JSON: [${e.getMessage}]".failureNel
       }
-      eventType        = (parsed \ "type").extract[String]
+      eventType <- Try((parsed \ "type").extract[String]) match {
+        case Success(et) => et.successNel
+        case Failure(e) => s"Could not extract type from $VendorName event JSON: [${e.getMessage}]".failureNel
+      }
       formattedEvent   = cleanupJsonEventValues(parsed, ("type", eventType).some, s"${eventType}_at")
       reformattedEvent = reformatParameters(formattedEvent)
       schema <- lookupSchema(eventType.some, VendorName, EventSchemaMap)

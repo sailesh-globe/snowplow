@@ -17,9 +17,6 @@ package common
 package adapters
 package registry
 
-// Java
-import com.fasterxml.jackson.core.JsonParseException
-
 // Scalaz
 import scalaz.Scalaz._
 
@@ -31,12 +28,13 @@ import org.json4s.jackson.JsonMethods._
 import com.snowplowanalytics.iglu.client.{Resolver, SchemaKey}
 
 // Joda Time
-import org.joda.time.{DateTime, DateTimeZone}
-import org.joda.time.format.{DateTimeFormat, DateTimeFormatter}
+import org.joda.time.DateTimeZone
+import org.joda.time.format.DateTimeFormat
 
 // This project
 import com.snowplowanalytics.snowplow.enrich.common.loaders.CollectorPayload
 import com.snowplowanalytics.snowplow.enrich.common.utils.{JsonUtils => JU}
+
 import scala.util.{Failure, Success, Try}
 
 /**
