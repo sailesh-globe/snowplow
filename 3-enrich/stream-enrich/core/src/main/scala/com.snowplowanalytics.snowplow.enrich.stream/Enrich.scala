@@ -126,7 +126,7 @@ trait Enrich {
       configOption()
       localResolverOption()
       localEnrichmentsOption()
-      forceIpLookupsDownloadOption()
+      forceCachedFilesDownloadOption()
     }
 
   /**
