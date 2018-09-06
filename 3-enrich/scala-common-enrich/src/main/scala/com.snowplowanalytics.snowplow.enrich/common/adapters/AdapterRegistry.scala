@@ -17,6 +17,7 @@ package common
 package adapters
 
 // Iglu
+import akka.actor.ActorSystem
 import iglu.client.Resolver
 
 // Scalaz
@@ -57,6 +58,10 @@ object AdapterRegistry {
     val Vero            = "com.getvero"
   }
 
+  private var ConfiguredRemote = Map( //TODO populate from config file
+    ("com.tgam.dummyFeed", "v1") -> new RemoteAdapter(ActorSystem("DUMMYACTORSYSTEM"),"akka.tcp:dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor")
+  )
+
   /**
    * Router to determine which adapter we use
    * to convert the CollectorPayload into
@@ -92,7 +97,11 @@ object AdapterRegistry {
       case (Vendor.Marketo, "v1")               => MarketoAdapter.toRawEvents(payload)
       case (Vendor.Vero, "v1")                  => VeroAdapter.toRawEvents(payload)
       case _ =>
-        s"Payload with vendor ${payload.api.vendor} and version ${payload.api.version} not supported by this version of Scala Common Enrich".failNel
+        val remote = ConfiguredRemote.get((payload.api.vendor, payload.api.version))
+        if (remote.isDefined)
+          remote.get.toRawEvents(payload)
+        else
+          s"Payload with vendor ${payload.api.vendor} and version ${payload.api.version} not supported by this version of Scala Common Enrich".failNel
     }
 
 }
