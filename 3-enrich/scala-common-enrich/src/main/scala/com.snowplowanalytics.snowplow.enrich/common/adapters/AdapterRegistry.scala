@@ -31,6 +31,8 @@ import registry.snowplow.{Tp2Adapter      => SpTp2Adapter}
 import registry.snowplow.{RedirectAdapter => SpRedirectAdapter}
 import registry._
 
+import scala.concurrent.duration.DurationInt
+
 /**
  * The AdapterRegistry lets us convert a CollectorPayload
  * into one or more RawEvents, using a given adapter.
@@ -59,7 +61,7 @@ object AdapterRegistry {
   }
 
   private var ConfiguredRemote = Map( //TODO populate from config file
-    ("com.tgam.dummyFeed", "v1") -> new RemoteAdapter(ActorSystem("DUMMYACTORSYSTEM"),"akka.tcp:dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor")
+    ("com.tgam.dummyFeed", "v1") -> new RemoteAdapter(ActorSystem("DUMMYACTORSYSTEM"),"akka.tcp:dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor", 5.seconds)
   )
 
   /**
