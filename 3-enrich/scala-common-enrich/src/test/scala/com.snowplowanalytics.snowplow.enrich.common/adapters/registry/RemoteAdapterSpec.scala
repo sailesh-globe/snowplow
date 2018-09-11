@@ -16,6 +16,7 @@ import org.json4s.jackson.JsonMethods.parse
 import org.specs2.Specification
 import org.specs2.scalaz.ValidationMatchers
 import org.specs2.specification.BeforeAfter
+import scalaz.NonEmptyList
 import scalaz.Scalaz._
 
 import scala.concurrent.duration.Duration
@@ -24,16 +25,27 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
   override def is = sequential ^ s2"""
    This is a specification to test the RemoteAdapter functionality.
-   the adapter must return the events parsed by the remote actor           ${testWrapper(e1)}
-   and it should also work if our payload has just one event               ${testWrapper(e2)}
+   the adapter must return any events parsed by the remote actor                 ${testWrapper(e1)}
+   the remote actor must treat any empty list as an error                        ${testWrapper(e2)}
+   the adapter must also return any other errors issued by the remote actor      ${testWrapper(e3)}
    """
 
   implicit val resolver = SpecHelpers.IgluResolver
 
+  val mockTracker          = "testTracker-v0.1"
+  val mockPlatform         = "srv"
+  val mockSchemaKey        = "moodReport"
+  val mockSchemaVendor     = "org.remoteActorTest"
+  val mockSchemaName       = "moodChange"
+  val mockSchemaFormat     = "jsonschema"
+  val mockSchemaVersion    = "1-0-0"
+  val bodyMissingErrorText = "missing payload body"
+  val emptyListErrorText   = "no events were found in payload body"
+
   class TestActor extends Actor with ActorLogging with Adapter {
 
     private val EventSchemaMap = Map(
-      "moodReport" -> SchemaKey("org.remoteActorTest", "moodChange", "jsonschema", "1-0-0").toSchemaUri
+      mockSchemaKey -> SchemaKey(mockSchemaVendor, mockSchemaName, mockSchemaFormat, mockSchemaVersion).toSchemaUri
     )
 
     override def receive = {
@@ -43,34 +55,40 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
     }
 
     override def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents =
-      parse(payload.body.get) \ "mood" match {
-        case JArray(list) =>
-          val schema = lookupSchema("moodReport".some, "", 0, EventSchemaMap)
+      if (payload.body.isEmpty) {
+        bodyMissingErrorText.failNel
+      } else {
+        parse(payload.body.get) \ "mood" match {
+          case JArray(list) =>
+            val schema = lookupSchema(mockSchemaKey.some, "", 0, EventSchemaMap)
 
-          val events = list.map { event =>
-            RawEvent(
-              api = payload.api,
-              parameters = toUnstructEventParams("testTracker-v0.1",
-                                                 toMap(payload.querystring),
-                                                 schema.toOption.get,
-                                                 event,
-                                                 "srv"),
-              contentType = payload.contentType,
-              source      = payload.source,
-              context     = payload.context
-            ).success
-          }
-          rawEventsListProcessor(events)
+            val events = list.map { event =>
+              RawEvent(
+                api = payload.api,
+                parameters = toUnstructEventParams(mockTracker,
+                                                   toMap(payload.querystring),
+                                                   schema.toOption.get,
+                                                   event,
+                                                   mockPlatform),
+                contentType = payload.contentType,
+                source      = payload.source,
+                context     = payload.context
+              ).success
+            }
+            if (events.isEmpty)
+              emptyListErrorText.failNel
+            else
+              rawEventsListProcessor(events)
 
-        case _ => "ng".failNel
+          case _ => "ng".failNel
+        }
       }
-
   }
 
   object Shared {
     val api       = CollectorApi("org.remoteActorTest", "v1")
     val cljSource = CollectorSource("clj-tomcat", "UTF-8", None)
-    val context   = CollectorContext(DateTime.parse("2013-08-29T00:18:48.000+00:00").some,
+    val context = CollectorContext(DateTime.parse("2013-08-29T00:18:48.000+00:00").some,
                                    "37.157.33.123".some,
                                    None,
                                    None,
@@ -98,16 +116,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
   }
 
   def e1 = {
-    val eventData = List(("anonymous", -0.3), ("subscribers", 0.6))
-    testCommon(eventData)
-  }
-
-  def e2 = {
-    val eventData = List(("registered", 0.0))
-    testCommon(eventData)
-  }
-
-  def testCommon(eventData: List[(String, Double)]) = {
+    val eventData    = List(("anonymous", -0.3), ("subscribers", 0.6))
     val eventsAsJson = eventData.map(evt => s"""{"${evt._1}":${evt._2}}""")
 
     val payloadBody = s""" {"mood": [${eventsAsJson.mkString(",")}]} """
@@ -119,10 +128,10 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
           RawEvent(
             Shared.api,
             Map(
-              "tv"    -> "testTracker-v0.1",
+              "tv"    -> mockTracker,
               "e"     -> "ue",
-              "p"     -> "srv",
-              "ue_pr" -> s"""{"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0","data":{"schema":"iglu:org.remoteActorTest/moodChange/jsonschema/1-0-0","data":$evtJson}}"""
+              "p"     -> mockPlatform,
+              "ue_pr" -> s"""{"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0","data":{"schema":"iglu:$mockSchemaVendor/$mockSchemaName/$mockSchemaFormat/$mockSchemaVersion","data":$evtJson}}"""
             ),
             None,
             Shared.cljSource,
@@ -132,6 +141,19 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
       .get
 
     testAdapter.toRawEvents(payload) must beSuccessful(expected)
+  }
+
+  def e2 = {
+    val emptyListPayload =
+      CollectorPayload(Shared.api, Nil, None, "{\"mood\":[]}".some, Shared.cljSource, Shared.context)
+    val expected = NonEmptyList(emptyListErrorText)
+    testAdapter.toRawEvents(emptyListPayload) must beFailing(expected)
+  }
+
+  def e3 = {
+    val bodylessPayload = CollectorPayload(Shared.api, Nil, None, None, Shared.cljSource, Shared.context)
+    val expected        = NonEmptyList(bodyMissingErrorText)
+    testAdapter.toRawEvents(bodylessPayload) must beFailing(expected)
   }
 
 }
