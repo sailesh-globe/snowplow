@@ -10,6 +10,7 @@ import com.snowplowanalytics.snowplow.enrich.common.loaders.{
   CollectorPayload,
   CollectorSource
 }
+import com.typesafe.config.ConfigFactory
 import org.joda.time.DateTime
 import org.json4s.JsonAST.JArray
 import org.json4s.jackson.JsonMethods.parse
@@ -25,9 +26,10 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
   override def is = sequential ^ s2"""
    This is a specification to test the RemoteAdapter functionality.
-   the adapter must return any events parsed by the remote actor                 ${testWrapper(e1)}
-   the remote actor must treat any empty list as an error                        ${testWrapper(e2)}
-   the adapter must also return any other errors issued by the remote actor      ${testWrapper(e3)}
+   the adapter must return any events parsed by the remote actor                 ${testWrapperLocal(e1)}
+   the remote actor must treat any empty list as an error                        ${testWrapperLocal(e2)}
+   the adapter must also return any other errors issued by the remote actor      ${testWrapperLocal(e3)}
+   the adapter must be able to talk to non-local actors   ${testWrapperRemote(e1)}
    """
 
   implicit val resolver = SpecHelpers.IgluResolver
@@ -99,7 +101,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
   var actorSystem: ActorSystem   = _
   var testAdapter: RemoteAdapter = _
 
-  object testWrapper extends BeforeAfter {
+  object testWrapperLocal extends BeforeAfter {
 
     def before = {
       val systemName = "TESTSPEC"
@@ -108,6 +110,22 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
       testAdapter = new RemoteAdapter(actorSystem,
                                       s"akka://$systemName/user/testActor",
+                                      Duration(5, java.util.concurrent.TimeUnit.SECONDS))
+    }
+
+    def after =
+      actorSystem.terminate()
+  }
+
+  object testWrapperRemote extends BeforeAfter {  //TODO remove, it's not a unit test
+
+    def before = {
+      val systemName = "TESTSPEC"
+      actorSystem =
+        ActorSystem(systemName, ConfigFactory.load(ConfigFactory.parseString("akka{actor{provider:remote}}")))
+
+      testAdapter = new RemoteAdapter(actorSystem,
+                                      "akka.tcp://dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor",
                                       Duration(5, java.util.concurrent.TimeUnit.SECONDS))
     }
 

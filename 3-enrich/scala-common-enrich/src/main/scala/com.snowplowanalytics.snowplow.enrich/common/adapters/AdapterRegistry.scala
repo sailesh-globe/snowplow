@@ -17,7 +17,6 @@ package common
 package adapters
 
 // Iglu
-import akka.actor.ActorSystem
 import iglu.client.Resolver
 
 // Scalaz
@@ -30,6 +29,10 @@ import registry.snowplow.{Tp1Adapter      => SpTp1Adapter}
 import registry.snowplow.{Tp2Adapter      => SpTp2Adapter}
 import registry.snowplow.{RedirectAdapter => SpRedirectAdapter}
 import registry._
+
+// Akka
+import akka.actor.ActorSystem
+import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.duration.DurationInt
 
@@ -61,8 +64,11 @@ object AdapterRegistry {
   }
 
   private var ConfiguredRemote = Map( //TODO populate from config file
-    ("com.tgam.dummyFeed", "v1") -> new RemoteAdapter(ActorSystem("DUMMYACTORSYSTEM"),"akka.tcp:dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor", 5.seconds)
-  )
+    ("com.tgam.dummyFeed", "v1") -> new RemoteAdapter(
+      ActorSystem("DUMMYACTORSYSTEM", ConfigFactory.load(ConfigFactory.parseString("akka{actor{provider:remote}}"))),
+      "akka.tcp:dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor",
+      5.seconds
+    ))
 
   /**
    * Router to determine which adapter we use
