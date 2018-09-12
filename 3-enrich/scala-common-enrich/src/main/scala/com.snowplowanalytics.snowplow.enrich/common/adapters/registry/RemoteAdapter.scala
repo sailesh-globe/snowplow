@@ -23,8 +23,9 @@ class RemoteAdapter(actorSystem: ActorSystem, remoteUrl: String, timeout: Finite
     val resultFromRemote = Await.result(Patterns.ask(actorSelection, payload, timeout), timeout + 1.second)
 
     resultFromRemote match {
-      case events: ValidatedRawEvents => events
-      case _                          => s"not good, got $resultFromRemote".failNel
+      case events: List[RawEvent] => events.toNel.get.success
+      case errors: Set[String]    => errors.mkString(" ++ ").failNel
+      case _                      => s"not good, got this from remote but don't know what to do with it: $resultFromRemote".failNel
     }
   }
 

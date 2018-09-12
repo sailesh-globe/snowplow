@@ -17,22 +17,34 @@ import org.json4s.jackson.JsonMethods.parse
 import org.specs2.Specification
 import org.specs2.scalaz.ValidationMatchers
 import org.specs2.specification.BeforeAfter
-import scalaz.NonEmptyList
 import scalaz.Scalaz._
+import scalaz.{Failure, NonEmptyList, Success}
 
+import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
 class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
   override def is = sequential ^ s2"""
    This is a specification to test the RemoteAdapter functionality.
-   the adapter must return any events parsed by the remote actor                 ${testWrapperLocal(e1)}
-   the remote actor must treat any empty list as an error                        ${testWrapperLocal(e2)}
-   the adapter must also return any other errors issued by the remote actor      ${testWrapperLocal(e3)}
-   the adapter must be able to talk to non-local actors   ${testWrapperRemote(e1)}
+   RemoteAdapter must return any events parsed by this local test actor                 ${testWrapperLocal(e1)}
+   this local actor (well, any actor) must treat an empty list as an error              ${testWrapperLocal(e2)}
+   RemoteAdapter must also return any other errors issued by this local actor           ${testWrapperLocal(e3)}
+   RemoteAdapter must return any events parsed by an external test actor                ${testWrapperExternal(e4)}
+   that external test actor must treat an empty list as an error                        ${testWrapperExternal(e5)}
+   RemoteAdapter must also return any other errors issued by that external actor        ${testWrapperExternal(e6)}
    """
 
+  // Connections to external actors are outside the scope of normal unit tests, so they are normally disabled here.
+  // But if you happen to have a test actorsystem running somewhere with an actor that behaves like the TestActor class below,
+  // you can specify its url here:
+  val externalActorUrl       = None //e.g. Some("akka.tcp://remoteTestSystem@127.0.0.1:8995/user/testActor")
+  val externalActionTimeout  = Duration(5, java.util.concurrent.TimeUnit.SECONDS)
+  def shouldRunExternalTests = externalActorUrl.isDefined
+
   implicit val resolver = SpecHelpers.IgluResolver
+
+  val actionTimeout = Duration(5, java.util.concurrent.TimeUnit.SECONDS)
 
   val mockTracker          = "testTracker-v0.1"
   val mockPlatform         = "srv"
@@ -52,8 +64,12 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
     override def receive = {
       case payload: CollectorPayload =>
-        val raws = toRawEvents(payload)
-        sender() ! raws
+        val parsedEvents = toRawEvents(payload)
+        // the remote version of this actor can't serialize some of the scalaz stuff, so let's send the components instead:
+        parsedEvents match {
+          case Success(events) => sender() ! events.head :: events.tail
+          case Failure(msgs)   => sender() ! (msgs.head :: msgs.tail).toSet
+        }
     }
 
     override def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents =
@@ -98,39 +114,42 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
                                    None)
   }
 
-  var actorSystem: ActorSystem   = _
   var testAdapter: RemoteAdapter = _
 
   object testWrapperLocal extends BeforeAfter {
+    var actorSystem: ActorSystem = _
 
     def before = {
       val systemName = "TESTSPEC"
       actorSystem = ActorSystem(systemName)
       val actor = actorSystem.actorOf(Props(new TestActor()), "testActor")
 
-      testAdapter = new RemoteAdapter(actorSystem,
-                                      s"akka://$systemName/user/testActor",
-                                      Duration(5, java.util.concurrent.TimeUnit.SECONDS))
+      testAdapter = new RemoteAdapter(actorSystem, s"akka://$systemName/user/testActor", actionTimeout)
     }
 
-    def after =
+    def after = {
       actorSystem.terminate()
+      Await.result(actorSystem.whenTerminated, actionTimeout)
+    }
   }
 
-  object testWrapperRemote extends BeforeAfter {  //TODO remove, it's not a unit test
+  object testWrapperExternal extends BeforeAfter {
+    var actorSystem: ActorSystem = _
 
-    def before = {
-      val systemName = "TESTSPEC"
-      actorSystem =
-        ActorSystem(systemName, ConfigFactory.load(ConfigFactory.parseString("akka{actor{provider:remote}}")))
+    def before =
+      if (shouldRunExternalTests) {
+        val systemName = "TESTSPEC"
+        actorSystem =
+          ActorSystem(systemName, ConfigFactory.load(ConfigFactory.parseString("akka{actor{provider:remote}}")))
 
-      testAdapter = new RemoteAdapter(actorSystem,
-                                      "akka.tcp://dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor",
-                                      Duration(5, java.util.concurrent.TimeUnit.SECONDS))
-    }
+        testAdapter = new RemoteAdapter(actorSystem, externalActorUrl.get, externalActionTimeout)
+      }
 
     def after =
-      actorSystem.terminate()
+      if (shouldRunExternalTests) {
+        actorSystem.terminate()
+        Await.result(actorSystem.whenTerminated, externalActionTimeout)
+      }
   }
 
   def e1 = {
@@ -173,5 +192,23 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
     val expected        = NonEmptyList(bodyMissingErrorText)
     testAdapter.toRawEvents(bodylessPayload) must beFailing(expected)
   }
+
+  def e4 =
+    if (shouldRunExternalTests)
+      e1
+    else
+      ok
+
+  def e5 =
+    if (shouldRunExternalTests)
+      e2
+    else
+      ok
+
+  def e6 =
+    if (shouldRunExternalTests)
+      e3
+    else
+      ok
 
 }
