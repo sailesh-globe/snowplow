@@ -14,7 +14,7 @@ import scalaz.Scalaz._
 import scala.concurrent.Await
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
-class RemoteAdapter(actorSystem: ActorSystem, remoteUrl: String, timeout: FiniteDuration) extends Adapter {
+class RemoteAdapter(actorSystem: ActorSystem, val remoteUrl: String, val timeout: FiniteDuration) extends Adapter {
 
   private val actorSelection = actorSystem.actorSelection(remoteUrl)
 

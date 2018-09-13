@@ -2,6 +2,8 @@ package com.snowplowanalytics.snowplow.enrich.common
 package adapters
 package registry
 
+import java.util.concurrent.TimeUnit
+
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import com.snowplowanalytics.iglu.client.{Resolver, SchemaKey}
 import com.snowplowanalytics.snowplow.enrich.common.loaders.{
@@ -29,7 +31,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
   // But if you happen to have a test actorsystem running somewhere with an actor that behaves like the TestActor class below,
   // you can specify its url here:
   val externalActorUrl       = None //e.g. Some("akka.tcp://remoteTestSystem@127.0.0.1:8995/user/testActor")
-  val externalActionTimeout  = Duration(5, java.util.concurrent.TimeUnit.SECONDS)
+  val externalActionTimeout  = Duration(5, TimeUnit.SECONDS)
   def shouldRunExternalTests = externalActorUrl.isDefined
 
   override def is = sequential ^ s2"""
@@ -46,7 +48,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
   implicit val resolver = SpecHelpers.IgluResolver
 
-  val actionTimeout = Duration(5, java.util.concurrent.TimeUnit.SECONDS)
+  val actionTimeout = Duration(5, TimeUnit.SECONDS)
 
   val mockTracker          = "testTracker-v0.1"
   val mockPlatform         = "srv"
@@ -147,7 +149,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
       if (shouldRunExternalTests) {
         val systemName = "TESTSPEC"
         actorSystem =
-          ActorSystem(systemName, ConfigFactory.load(ConfigFactory.parseString("akka{actor{provider:remote}}")))
+          ActorSystem(systemName, ConfigFactory.load(ConfigFactory.parseString("akka.actor.provider:remote")))
 
         testAdapter = new RemoteAdapter(actorSystem, externalActorUrl.get, externalActionTimeout)
       }
@@ -202,7 +204,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
   def e4 = {
     val blankPayload = CollectorPayload(Shared.api, Nil, None, "".some, Shared.cljSource, Shared.context)
-    val expected = doubleErrorText.toNel.get
+    val expected     = doubleErrorText.toNel.get
     testAdapter.toRawEvents(blankPayload) must beFailing(expected)
   }
 

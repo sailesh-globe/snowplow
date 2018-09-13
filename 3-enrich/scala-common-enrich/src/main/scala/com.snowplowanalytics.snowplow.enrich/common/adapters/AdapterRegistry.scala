@@ -16,6 +16,9 @@ package enrich
 package common
 package adapters
 
+import java.io.File
+import java.util.concurrent.TimeUnit
+
 // Iglu
 import iglu.client.Resolver
 
@@ -32,9 +35,11 @@ import registry._
 
 // Akka
 import akka.actor.ActorSystem
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigFactory, Config}
 
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.FiniteDuration
+import scala.collection.JavaConverters._
+
 
 /**
  * The AdapterRegistry lets us convert a CollectorPayload
@@ -63,12 +68,10 @@ object AdapterRegistry {
     val Vero            = "com.getvero"
   }
 
-  private var ConfiguredRemote = Map( //TODO populate from config file
-    ("com.tgam.dummyFeed", "v1") -> new RemoteAdapter(
-      ActorSystem("DUMMYACTORSYSTEM", ConfigFactory.load(ConfigFactory.parseString("akka{actor{provider:remote}}"))),
-      "akka.tcp:dummyRemoteAdapter@127.0.0.1:2995/user/dummyActor",
-      5.seconds
-    ))
+  //TODO make the following less of a hack
+  private val RemoteAdapters = createRemoteAdaptersFromConfigFile(System.getProperty("remoteAdapterConfig"))
+
+  var EnrichActorSystem: Option[ActorSystem] = None
 
   /**
    * Router to determine which adapter we use
@@ -105,11 +108,42 @@ object AdapterRegistry {
       case (Vendor.Marketo, "v1")               => MarketoAdapter.toRawEvents(payload)
       case (Vendor.Vero, "v1")                  => VeroAdapter.toRawEvents(payload)
       case _ =>
-        val remote = ConfiguredRemote.get((payload.api.vendor, payload.api.version))
+        val remote = RemoteAdapters.get((payload.api.vendor, payload.api.version))
         if (remote.isDefined)
           remote.get.toRawEvents(payload)
         else
           s"Payload with vendor ${payload.api.vendor} and version ${payload.api.version} not supported by this version of Scala Common Enrich".failNel
     }
+
+  def createRemoteAdaptersFromConfigFile(configFilename: String) =
+    if (configFilename != null) {
+      createRemotes(ConfigFactory.parseFile(new File(configFilename)))
+    }
+    else
+      Map.empty[(String, String), RemoteAdapter]
+
+  def createRemoteAdaptersFromConfigString(config: String) =
+    createRemotes(ConfigFactory.parseString(config))
+
+  def createRemotes(userConfig: Config) = {
+    val config = ConfigFactory.load(userConfig)
+
+    if (EnrichActorSystem.isEmpty)
+      EnrichActorSystem = Some(ActorSystem("Enrich", config))
+
+    config
+      .getConfigList("remoteAdapters")
+      .asScala
+      .toList
+      .map { adapterConf =>
+        val adapter =
+          new RemoteAdapter(EnrichActorSystem.get,
+                            adapterConf.getString("url"),
+                            new FiniteDuration(adapterConf.getDuration("timeout").toMillis, TimeUnit.MILLISECONDS))
+
+        (adapterConf.getString("vendor"), adapterConf.getString("version")) -> adapter
+      }
+      .toMap
+  }
 
 }
