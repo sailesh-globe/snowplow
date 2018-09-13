@@ -25,22 +25,24 @@ import scala.concurrent.duration.Duration
 
 class RemoteAdapterSpec extends Specification with ValidationMatchers {
 
-  override def is = sequential ^ s2"""
-   This is a specification to test the RemoteAdapter functionality.
-   RemoteAdapter must return any events parsed by this local test actor                 ${testWrapperLocal(e1)}
-   this local actor (well, any actor) must treat an empty list as an error              ${testWrapperLocal(e2)}
-   RemoteAdapter must also return any other errors issued by this local actor           ${testWrapperLocal(e3)}
-   RemoteAdapter must return any events parsed by an external test actor                ${testWrapperExternal(e4)}
-   that external test actor must treat an empty list as an error                        ${testWrapperExternal(e5)}
-   RemoteAdapter must also return any other errors issued by that external actor        ${testWrapperExternal(e6)}
-   """
-
   // Connections to external actors are outside the scope of normal unit tests, so they are normally disabled here.
   // But if you happen to have a test actorsystem running somewhere with an actor that behaves like the TestActor class below,
   // you can specify its url here:
   val externalActorUrl       = None //e.g. Some("akka.tcp://remoteTestSystem@127.0.0.1:8995/user/testActor")
   val externalActionTimeout  = Duration(5, java.util.concurrent.TimeUnit.SECONDS)
   def shouldRunExternalTests = externalActorUrl.isDefined
+
+  override def is = sequential ^ s2"""
+   This is a specification to test the RemoteAdapter functionality.
+   RemoteAdapter must return any events parsed by this local test actor                 ${testWrapperLocal(e1)}
+   this local actor (well, any actor) must treat an empty list as an error              ${testWrapperLocal(e2)}
+   RemoteAdapter must also return any other errors issued by this local actor           ${testWrapperLocal(e3)}
+   RemoteAdapter must also return multiple errors issued by this local actor            ${testWrapperLocal(e4)}
+   RemoteAdapter must return any events parsed by an external test actor                ${testWrapperExternal(e1ext)}
+   that external test actor must treat an empty list as an error                        ${testWrapperExternal(e2ext)}
+   RemoteAdapter must also return any other errors issued by that external actor        ${testWrapperExternal(e3ext)}
+   RemoteAdapter must also return multiple errors issued by that external actor         ${testWrapperExternal(e4ext)}
+   """
 
   implicit val resolver = SpecHelpers.IgluResolver
 
@@ -55,6 +57,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
   val mockSchemaVersion    = "1-0-0"
   val bodyMissingErrorText = "missing payload body"
   val emptyListErrorText   = "no events were found in payload body"
+  val doubleErrorText      = List("error one", "error two")
 
   class TestActor extends Actor with ActorLogging with Adapter {
 
@@ -68,13 +71,17 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
         // the remote version of this actor can't serialize some of the scalaz stuff, so let's send the components instead:
         parsedEvents match {
           case Success(events) => sender() ! events.head :: events.tail
-          case Failure(msgs)   => sender() ! (msgs.head :: msgs.tail).toSet
+          case Failure(msgs)   => sender() ! Some(msgs.head :: msgs.tail)
         }
     }
 
     override def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents =
       if (payload.body.isEmpty) {
         bodyMissingErrorText.failNel
+
+      } else if (payload.body.get == "") {
+        doubleErrorText.toNel.get.fail
+
       } else {
         parse(payload.body.get) \ "mood" match {
           case JArray(list) =>
@@ -193,21 +200,33 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
     testAdapter.toRawEvents(bodylessPayload) must beFailing(expected)
   }
 
-  def e4 =
+  def e4 = {
+    val blankPayload = CollectorPayload(Shared.api, Nil, None, "".some, Shared.cljSource, Shared.context)
+    val expected = doubleErrorText.toNel.get
+    testAdapter.toRawEvents(blankPayload) must beFailing(expected)
+  }
+
+  def e1ext =
     if (shouldRunExternalTests)
       e1
     else
       ok
 
-  def e5 =
+  def e2ext =
     if (shouldRunExternalTests)
       e2
     else
       ok
 
-  def e6 =
+  def e3ext =
     if (shouldRunExternalTests)
       e3
+    else
+      ok
+
+  def e4ext =
+    if (shouldRunExternalTests)
+      e4
     else
       ok
 
