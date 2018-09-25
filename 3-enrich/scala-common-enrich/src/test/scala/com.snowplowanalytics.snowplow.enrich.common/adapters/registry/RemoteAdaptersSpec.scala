@@ -3,10 +3,10 @@ package snowplow
 package enrich
 package common
 package adapters
+package registry
 
 import java.util.concurrent.TimeUnit
 
-import com.snowplowanalytics.snowplow.enrich.common.adapters.registry.RemoteAdapter
 import com.typesafe.config.ConfigFactory
 import org.specs2.Specification
 import org.specs2.specification.After
@@ -14,7 +14,7 @@ import org.specs2.specification.After
 import scala.concurrent.Await
 import scala.concurrent.duration.Duration
 
-class AdapterRegistrySpec extends Specification {
+class RemoteAdaptersSpec extends Specification {
   def is = sequential ^ s2"""
                 This is a specification to test some AdapterRegistry functionality.
                 AdapterRegistry should be able to create RemoteAdapters from a string config     ${testWrapperLocal(e1)}
@@ -24,9 +24,9 @@ class AdapterRegistrySpec extends Specification {
 
   object testWrapperLocal extends After {
     def after =
-      if (AdapterRegistry.EnrichActorSystem.isDefined) {
-        AdapterRegistry.EnrichActorSystem.get.terminate()
-        Await.result(AdapterRegistry.EnrichActorSystem.get.whenTerminated, Duration(5, TimeUnit.SECONDS))
+      if (RemoteAdapters.EnrichActorSystem.isDefined) {
+        RemoteAdapters.EnrichActorSystem.get.terminate()
+        Await.result(RemoteAdapters.EnrichActorSystem.get.whenTerminated, Duration(5, TimeUnit.SECONDS))
       }
   }
 
@@ -44,28 +44,30 @@ class AdapterRegistrySpec extends Specification {
          |remoteAdapters:[ {vendor:\"$vendor\", version:\"$version\", url:\"$url\", timeout:\"$timeout\"} ]
         """.stripMargin
 
-    commonValidation(AdapterRegistry.createRemoteAdaptersFromConfigString(testConfig))
+    val actual = RemoteAdapters.createFromConfigString(testConfig)
+    commonValidation(actual)
   }
 
   def e2 = {
 
     val testConfig = ConfigFactory.parseResources(this.getClass, ourTestConfigFile)
 
-    commonValidation(AdapterRegistry.createRemotes(testConfig))
+    val actual = RemoteAdapters.createFromConfig(testConfig)
+    commonValidation(actual)
   }
 
   def e3 = {
     val classPath = this.getClass.getPackage.getName.replace(".", "/")
-    commonValidation(
-      AdapterRegistry.createRemoteAdaptersFromConfigFile(s"src/test/resources/$classPath/$ourTestConfigFile"))
+
+    val actual = RemoteAdapters.createFromConfigFile(s"src/test/resources/$classPath/$ourTestConfigFile")
+    commonValidation(actual)
   }
 
-  def commonValidation(parsedResults: Map[(String, String), RemoteAdapter]) = {
-    val theAdapter = parsedResults.get((vendor, version))
+  def commonValidation(actual: Map[(String, String), RemoteAdapter]) = {
+    val theAdapter = actual.get((vendor, version))
 
     (
-      parsedResults must haveSize(1)
-        and (theAdapter must beSome[RemoteAdapter])
+      theAdapter must beSome[RemoteAdapter]
         and (theAdapter.get.timeout.toMillis must beEqualTo(4000))
         and (theAdapter.get.remoteUrl must beEqualTo(url))
     )
