@@ -10,11 +10,14 @@ import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorSystem
 import com.typesafe.config.{Config, ConfigFactory}
+import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.FiniteDuration
 
 object RemoteAdapters {
+
+  lazy val log = LoggerFactory.getLogger(getClass())
 
   var EnrichActorSystem: Option[ActorSystem] = None
   var Adapters                               = Map.empty[(String, String), RemoteAdapter]
@@ -23,20 +26,20 @@ object RemoteAdapters {
     if (configFilename != null) {
       try {
         val configFile = new File(configFilename)
-        if (configFile.exists())
+        if (configFile.exists()) {
           createFromConfig(ConfigFactory.parseFile(configFile))
-        else {
-          System.err.println(s"RemoteAdapters config file '$configFilename' was not found!")
+        } else {
+          log.error(s"RemoteAdapters config file '$configFilename' was not found!")
           Map.empty[(String, String), RemoteAdapter]
         }
       } catch {
         case e: Exception =>
-          System.err.println(s"RemoteAdapters initialization failed! $e:")
-          e.printStackTrace()
+          log.error(s"RemoteAdapters initialization failed!", e)
           Map.empty[(String, String), RemoteAdapter]
       }
-    } else
+    } else {
       Map.empty[(String, String), RemoteAdapter]
+    }
 
   def createFromConfigString(config: String) =
     createFromConfig(ConfigFactory.parseString(config))

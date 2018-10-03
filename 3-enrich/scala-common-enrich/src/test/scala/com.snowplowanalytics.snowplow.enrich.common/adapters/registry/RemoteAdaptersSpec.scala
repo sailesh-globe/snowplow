@@ -7,7 +7,7 @@ package registry
 
 import java.util.concurrent.TimeUnit
 
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ConfigException, ConfigFactory}
 import org.specs2.Specification
 import org.specs2.specification.After
 
@@ -16,10 +16,11 @@ import scala.concurrent.duration.Duration
 
 class RemoteAdaptersSpec extends Specification {
   def is = sequential ^ s2"""
-                This is a specification to test some AdapterRegistry functionality.
-                AdapterRegistry should be able to create RemoteAdapters from a string config     ${testWrapperLocal(e1)}
-                AdapterRegistry should be able to create RemoteAdapters from a resource config   ${testWrapperLocal(e2)}
-                AdapterRegistry should be able to create RemoteAdapters from a file config       ${testWrapperLocal(e3)}
+                This is a specification to test some RemoteAdapters functionality.
+                Should be able to create RemoteAdapters from a string config     ${testWrapperLocal(e1)}
+                Should be able to create RemoteAdapters from a resource config   ${testWrapperLocal(e2)}
+                Should be able to create RemoteAdapters from a file config       ${testWrapperLocal(e3)}
+                Should error out on a bad config                                 ${testWrapperLocal(e4)}
   """
 
   object testWrapperLocal extends After {
@@ -62,6 +63,9 @@ class RemoteAdaptersSpec extends Specification {
     val actual = RemoteAdapters.createFromConfigFile(s"src/test/resources/$classPath/$ourTestConfigFile")
     commonValidation(actual)
   }
+
+  def e4 =
+    RemoteAdapters.createFromConfigString("bad{config") must throwA[ConfigException]
 
   def commonValidation(actual: Map[(String, String), RemoteAdapter]) = {
     val theAdapter = actual.get((vendor, version))

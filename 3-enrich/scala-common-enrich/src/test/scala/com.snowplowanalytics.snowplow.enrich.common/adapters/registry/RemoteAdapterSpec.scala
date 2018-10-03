@@ -70,10 +70,9 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
     override def receive = {
       case payload: CollectorPayload =>
         val parsedEvents = toRawEvents(payload)
-        // the remote version of this actor can't serialize some of the scalaz stuff, so let's send the components instead:
         parsedEvents match {
-          case Success(events) => sender() ! events.head :: events.tail
-          case Failure(msgs)   => sender() ! Some(msgs.head :: msgs.tail)
+          case Success(events) => sender() ! Right(events.head :: events.tail)
+          case Failure(msgs)   => sender() ! Left(msgs.head :: msgs.tail)
         }
     }
 
