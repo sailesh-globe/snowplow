@@ -57,6 +57,9 @@ object AdapterRegistry {
     val Vero            = "com.getvero"
   }
 
+  //TODO make the following less of a hack
+  private val remoteAdapters = RemoteAdapters.createFromConfigFile(System.getProperty("remoteAdapterConfig"))
+
   /**
    * Router to determine which adapter we use
    * to convert the CollectorPayload into
@@ -92,7 +95,11 @@ object AdapterRegistry {
       case (Vendor.Marketo, "v1")               => MarketoAdapter.toRawEvents(payload)
       case (Vendor.Vero, "v1")                  => VeroAdapter.toRawEvents(payload)
       case _ =>
-        s"Payload with vendor ${payload.api.vendor} and version ${payload.api.version} not supported by this version of Scala Common Enrich".failNel
+        val remote = remoteAdapters.get((payload.api.vendor, payload.api.version))
+        if (remote.isDefined)
+          remote.get.toRawEvents(payload)
+        else
+          s"Payload with vendor ${payload.api.vendor} and version ${payload.api.version} not supported by this version of Scala Common Enrich".failNel
     }
 
 }
