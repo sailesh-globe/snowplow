@@ -20,7 +20,7 @@ object RemoteAdapterExample extends App {
   val httpServer = localHttpServer(tcpPort, pathName)
   httpServer.start()
 
-  val mockAdapter = new MockAdapter("igluResolver.conf")
+  val mockAdapter = new SampleAdapter("igluResolver.conf")
 
   private def localHttpServer(tcpPort: Int, basePath: String): HttpServer = {
     val httpServer = HttpServer.create(new InetSocketAddress(tcpPort), 0)
@@ -59,13 +59,8 @@ object RemoteAdapterExample extends App {
 
   def deserializeFromBase64(s: String): Any = {
     val bytes = Base64.getDecoder.decode(s)
-    val ois = new ObjectInputStream(new ByteArrayInputStream(bytes)) {
-      override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] =
-        try { Class.forName(desc.getName, false, getClass.getClassLoader) } catch {
-          case ex: ClassNotFoundException => super.resolveClass(desc)
-        }
-    }
-    val p = ois.readObject()
+    val ois   = new ObjectInputStream(new ByteArrayInputStream(bytes))
+    val p     = ois.readObject()
     ois.close()
     p
   }

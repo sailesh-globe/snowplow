@@ -67,32 +67,25 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
     httpServer.createContext(
       s"/$basePath",
       new HttpHandler {
-        def handle(exchange: HttpExchange): Unit =
-          try {
-            val encodedObj = getBodyAsString(exchange.getRequestBody)
-            val obj        = RemoteAdapter.deserializeFromBase64(encodedObj)
-            val response = obj match {
-              case payload: CollectorPayload =>
-                val parsedEvents = MockRemoteAdapter.toRawEvents(payload)
+        def handle(exchange: HttpExchange): Unit = {
 
-                parsedEvents match {
-                  case Success(events) => Right(events.head :: events.tail)
-                  case Failure(msgs)   => Left(msgs.head :: msgs.tail)
-                }
-              case _ => Left("ugh".failNel)
-            }
+          val encodedObj = getBodyAsString(exchange.getRequestBody)
+          val obj        = RemoteAdapter.deserializeFromBase64(encodedObj)
+          val response = obj match {
+            case payload: CollectorPayload =>
+              val parsedEvents = MockRemoteAdapter.toRawEvents(payload)
 
-            exchange.sendResponseHeaders(200, 0)
-            exchange.getResponseBody.write(RemoteAdapter.serializeToBase64(response).getBytes)
-            exchange.getResponseBody.close()
-
-          } catch {
-            case e: Exception =>
-              e.printStackTrace()
-              exchange.sendResponseHeaders(500, 0)
-              exchange.getResponseBody.write(e.getMessage.getBytes)
-              exchange.getResponseBody.close()
+              parsedEvents match {
+                case Success(events) => Right(events.head :: events.tail)
+                case Failure(msgs)   => Left(msgs.head :: msgs.tail)
+              }
+            case _ => Left("ugh".failNel)
           }
+
+          exchange.sendResponseHeaders(200, 0)
+          exchange.getResponseBody.write(RemoteAdapter.serializeToBase64(response).getBytes)
+          exchange.getResponseBody.close()
+        }
       }
     )
     httpServer

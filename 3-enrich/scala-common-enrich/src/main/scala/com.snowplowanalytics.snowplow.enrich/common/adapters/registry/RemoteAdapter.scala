@@ -11,7 +11,10 @@ import java.util.Base64
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.enrich.common.loaders.CollectorPayload
 import com.softwaremill.sttp._
+import org.json4s.JsonDSL._
+import org.json4s.jackson.JsonMethods._
 import org.slf4j.LoggerFactory
+import scalaz._
 import scalaz.Scalaz._
 
 import scala.concurrent.duration.FiniteDuration
@@ -24,6 +27,9 @@ import scala.concurrent.duration.FiniteDuration
  * @param timeout max duration of each connection attempt, and of the wait for each response from the remote
  */
 class RemoteAdapter(val remoteUrl: String, val timeout: FiniteDuration) extends Adapter {
+
+  val bodyMissingErrorText = "missing payload body"
+  val emptyListErrorText   = "no events were found in payload body"
 
   private lazy val log = LoggerFactory.getLogger(getClass)
 
@@ -44,19 +50,47 @@ class RemoteAdapter(val remoteUrl: String, val timeout: FiniteDuration) extends 
    * @return a Validation boxing either a NEL of RawEvents on
    *         Success, or a NEL of Failure Strings
    */
-  def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents =
-    httpPost(remoteUrl, RemoteAdapter.serializeToBase64(payload)) match {
-      case Left(errmsg) =>
-        errmsg.failNel
-      case Right(bodyAsString) =>
-        RemoteAdapter
-          .deserializeFromBase64(bodyAsString)
-          .asInstanceOf[Either[List[String], List[RawEvent]]] match {
-          case Right(events) => events.toNel.get.success
-          case Left(errors)  => errors.toNel.get.fail
-          case ng            => s"Unexpected response from remote $remoteUrl $ng".failNel
-        }
+  def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents = {
+    if (payload.body.isEmpty || payload.body.get == "") {
+      bodyMissingErrorText.failNel
+    } else {
+
+      val json = ("contentType" -> payload.contentType) ~
+        ("queryString" -> toMap(payload.querystring)) ~
+        ("body" -> payload.body)
+
+      httpPost(remoteUrl, compact(render(json))) match {
+        case Left(errmsg) =>
+          errmsg.failNel
+        case Right(bodyAsString) =>
+          val responseJson = parse(RemoteAdapter.deserializeFromBase64(bodyAsString).asInstanceOf[String])
+
+          val events = (responseJson \ "events").extract[List[RawEventParameters]] match {
+            case rawEventParameters =>
+              rawEventParameters.map { rawEventParameters =>
+                RawEvent(
+                  api = payload.api,
+                  parameters = rawEventParameters,
+                  contentType = payload.contentType,
+                  source = payload.source,
+                  context = payload.context
+                ).success
+              }
+          }
+          val error = (responseJson \ "error").extract[String]
+          if (events.isEmpty) {
+            if (error != null) {
+              error.failNel
+            } else {
+              emptyListErrorText.failNel
+            }
+          } else {
+            rawEventsListProcessor(events)
+          }
+        case ng => s"Unexpected response from remote $remoteUrl $ng".failNel
+      }
     }
+  }
 
   private def httpPost(requestUrl: String, body: String): Either[String, String] =
     try {
@@ -89,13 +123,8 @@ object RemoteAdapter {
 
   def deserializeFromBase64(s: String): Any = {
     val bytes = Base64.getDecoder.decode(s)
-    val ois = new ObjectInputStream(new ByteArrayInputStream(bytes)) {
-      override def resolveClass(desc: java.io.ObjectStreamClass): Class[_] =
-        try { Class.forName(desc.getName, false, getClass.getClassLoader) } catch {
-          case ex: ClassNotFoundException => super.resolveClass(desc)
-        }
-    }
-    val p = ois.readObject()
+    val ois   = new ObjectInputStream(new ByteArrayInputStream(bytes))
+    val p     = ois.readObject()
     ois.close()
     p
   }
