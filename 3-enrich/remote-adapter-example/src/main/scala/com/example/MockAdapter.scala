@@ -1,6 +1,5 @@
 package com.example
 
-import akka.actor.{Actor, ActorLogging}
 import com.snowplowanalytics.iglu.client.{Resolver, SchemaKey}
 import com.snowplowanalytics.snowplow.enrich.common.ValidatedRawEvents
 import com.snowplowanalytics.snowplow.enrich.common.adapters.RawEvent
@@ -11,13 +10,13 @@ import org.json4s.jackson.JsonMethods.parse
 import scalaz.Scalaz._
 import scalaz.{Failure, Success}
 
-class MockAdapter(resolverConfFilename: String) extends Adapter with Actor with ActorLogging {
+class MockAdapter(resolverConfFilename: String) extends Adapter {
 
-  val mockTracker  = "testTracker-v0.1"
-  val mockPlatform = "srv"
-  val mockSchemaKey        = "moodReport"
-  val mockSchemaVendor     = "org.remoteActorTest"
-  val mockSchemaName       = "moodChange"
+  val mockTracker      = "testTracker-v0.1"
+  val mockPlatform     = "srv"
+  val mockSchemaKey    = "moodReport"
+  val mockSchemaVendor = "org.remoteEnricherTest"
+  val mockSchemaName   = "moodChange"
 
   val bodyMissingErrorText = "missing payload body"
   val emptyListErrorText   = "no events were found in payload body"
@@ -29,20 +28,23 @@ class MockAdapter(resolverConfFilename: String) extends Adapter with Actor with 
 
   implicit val resolver = IgluUtils.getResolver(resolverConfFilename)
 
-  override def preStart(): Unit = log.info("MockListener started")
+  def handle(decodedBody: Any) =
+    try {
+      decodedBody match {
+        case payload: CollectorPayload =>
+          val parsedEvents = toRawEvents(payload)
 
-  override def postStop(): Unit = log.info("MockListener stopped")
+          parsedEvents match {
+            case Success(events) => Right(events.head :: events.tail)
+            case Failure(msgs)   => Left(msgs.head :: msgs.tail)
+          }
 
-  override def receive = {
-
-    case payload: CollectorPayload =>
-      val parsedEvents = toRawEvents(payload)
-
-      parsedEvents match {
-        case Success(events) => sender() ! Right(events.head :: events.tail)
-        case Failure(msgs)   => sender() ! Left(msgs.head :: msgs.tail)
+        case anythingElse =>
+          Left(List(s"expecting a CollectorPayload, but got a ${anythingElse.getClass}"))
       }
-  }
+    } catch {
+      case e: Exception => Left(List(s"aack, MockAdapter exception $e"))
+    }
 
   override def toRawEvents(payload: CollectorPayload)(implicit resolver: Resolver): ValidatedRawEvents =
     if (payload.body.isEmpty) {
