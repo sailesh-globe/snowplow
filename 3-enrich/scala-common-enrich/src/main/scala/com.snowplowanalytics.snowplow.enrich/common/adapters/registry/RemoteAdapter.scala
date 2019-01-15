@@ -17,7 +17,7 @@ import scalaz.Scalaz._
 import scala.concurrent.duration.FiniteDuration
 
 /**
- * An adapter for an enrichment that is handled by a remote RESTful webservice.
+ * An adapter for an enrichment that is handled by a remote webservice.
  *
  * @constructor create a new client to talk to the given remote webservice.
  * @param remoteUrl the url of the remote webservice, e.g. http://localhost/myEnrichment
