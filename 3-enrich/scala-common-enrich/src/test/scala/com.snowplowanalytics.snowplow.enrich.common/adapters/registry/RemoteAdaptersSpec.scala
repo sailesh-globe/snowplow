@@ -5,35 +5,21 @@ package common
 package adapters
 package registry
 
-import java.util.concurrent.TimeUnit
-
 import com.typesafe.config.{ConfigException, ConfigFactory}
 import org.specs2.Specification
-import org.specs2.specification.After
-
-import scala.concurrent.Await
-import scala.concurrent.duration.Duration
 
 class RemoteAdaptersSpec extends Specification {
   def is = sequential ^ s2"""
                 This is a specification to test some RemoteAdapters functionality.
-                Should be able to create RemoteAdapters from a string config     ${testWrapperLocal(e1)}
-                Should be able to create RemoteAdapters from a resource config   ${testWrapperLocal(e2)}
-                Should be able to create RemoteAdapters from a file config       ${testWrapperLocal(e3)}
-                Should error out on a bad config                                 ${testWrapperLocal(e4)}
+                Should be able to create RemoteAdapters from a string config     $e1
+                Should be able to create RemoteAdapters from a resource config   $e2
+                Should be able to create RemoteAdapters from a file config       $e3
+                Should error out on a bad config                                 $e4
   """
-
-  object testWrapperLocal extends After {
-    def after =
-      if (RemoteAdapters.EnrichActorSystem.isDefined) {
-        RemoteAdapters.EnrichActorSystem.get.terminate()
-        Await.result(RemoteAdapters.EnrichActorSystem.get.whenTerminated, Duration(5, TimeUnit.SECONDS))
-      }
-  }
 
   val vendor            = "com.blarg"
   val version           = "v1"
-  val url               = "akka.tcp:remoteTestSystem@127.0.0.1:8995/user/testActor"
+  val url               = "http://remoteTestSystem:8995/customRemoteEnricher"
   val timeout           = "4s"
   val ourTestConfigFile = "RemoteAdapters.conf"
 
