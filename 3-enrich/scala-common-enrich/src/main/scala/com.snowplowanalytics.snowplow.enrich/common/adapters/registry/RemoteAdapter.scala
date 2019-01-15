@@ -49,7 +49,8 @@ class RemoteAdapter(val remoteUrl: String, val timeout: FiniteDuration) extends 
       case Left(errmsg) =>
         errmsg.failNel
       case Right(bodyAsString) =>
-        RemoteAdapter.deserializeFromBase64(bodyAsString)
+        RemoteAdapter
+          .deserializeFromBase64(bodyAsString)
           .asInstanceOf[Either[List[String], List[RawEvent]]] match {
           case Right(events) => events.toNel.get.success
           case Left(errors)  => errors.toNel.get.fail
