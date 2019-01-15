@@ -151,7 +151,7 @@ class RemoteAdapterSpec extends Specification with ValidationMatchers {
   var testAdapter: RemoteAdapter = _
 
   object testWrapperLocal extends BeforeAfter {
-    val mockServerPort         = 8091 //TODO try zero
+    val mockServerPort         = 8091
     val mockServerPath         = "myEnrichment"
     var httpServer: HttpServer = _
 
