@@ -8,7 +8,6 @@ package registry
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-import akka.actor.ActorSystem
 import com.typesafe.config.{Config, ConfigFactory}
 import org.slf4j.LoggerFactory
 
@@ -17,10 +16,9 @@ import scala.concurrent.duration.FiniteDuration
 
 object RemoteAdapters {
 
-  lazy val log = LoggerFactory.getLogger(getClass())
+  lazy val log = LoggerFactory.getLogger(getClass)
 
-  var EnrichActorSystem: Option[ActorSystem] = None
-  var Adapters                               = Map.empty[(String, String), RemoteAdapter]
+  var Adapters = Map.empty[(String, String), RemoteAdapter]
 
   def createFromConfigFile(configFilename: String) =
     if (configFilename != null) {
@@ -47,9 +45,6 @@ object RemoteAdapters {
   def createFromConfig(userConfig: Config) = {
     val config = ConfigFactory.load(userConfig)
 
-    if (EnrichActorSystem == null || EnrichActorSystem.isEmpty)
-      EnrichActorSystem = Some(ActorSystem("Enrich", config))
-
     config
       .getConfigList("remoteAdapters")
       .asScala
@@ -57,9 +52,7 @@ object RemoteAdapters {
       .map { adapterConf =>
         val durationInMillis = adapterConf.getDuration("timeout", TimeUnit.MILLISECONDS)
         val adapter =
-          new RemoteAdapter(EnrichActorSystem.get,
-                            adapterConf.getString("url"),
-                            new FiniteDuration(durationInMillis, TimeUnit.MILLISECONDS))
+          new RemoteAdapter(adapterConf.getString("url"), new FiniteDuration(durationInMillis, TimeUnit.MILLISECONDS))
 
         (adapterConf.getString("vendor"), adapterConf.getString("version")) -> adapter
       }
