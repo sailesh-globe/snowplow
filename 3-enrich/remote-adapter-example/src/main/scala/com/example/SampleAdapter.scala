@@ -15,7 +15,6 @@ class SampleAdapter(resolverConfFilename: String) {
   val doubleErrorText = List("error one", "error two")
 
   implicit val formats = DefaultFormats
-  implicit val resolver = IgluUtils.getResolver(resolverConfFilename)
 
   sealed case class Payload(
                              queryString: Map[String, String],

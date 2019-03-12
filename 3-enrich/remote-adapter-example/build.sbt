@@ -9,7 +9,5 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "org.scalaz" %% "scalaz-core" % "7.0.9",
-
-  "com.snowplowanalytics" %% "iglu-scala-client" % "0.5.0"
+  "org.scalaz" %% "scalaz-core" % "7.0.9"
 )
