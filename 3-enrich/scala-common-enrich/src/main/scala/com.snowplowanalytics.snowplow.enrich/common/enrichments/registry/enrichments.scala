@@ -22,6 +22,8 @@ import java.net.URI
 
 import scalaz._
 import Scalaz._
+import com.github.fge.jsonschema.core.report.ProcessingMessage
+import org.json4s.JsonAST.{JObject, JString}
 
 // Maven Artifact
 import org.apache.maven.artifact.versioning.DefaultArtifactVersion
@@ -79,5 +81,27 @@ trait ParseableEnrichment {
         .toProcessingMessage
         .fail
         .toValidationNel
+    }
+}
+
+sealed trait EventSkip
+trait Skippable {
+  case class ClassicEvent(eventType: String) extends EventSkip    // would be nice to have eventType as a enum-like hierarchy
+  case class UnstructEvent(schema: SchemaKey) extends EventSkip
+
+  def parse(json: JValue): ValidatedNelMessage[EventSkip] =
+    json match {
+      case JObject(fields) =>
+        (fields.toMap.get("eventType"), fields.toMap.get("schema")) match {
+          case (Some(JString("unstruct")), Some(JString(schemaUri))) =>
+            SchemaKey.parse(schemaUri) match {
+              case Success(a) => UnstructEvent(a).success
+              case Failure(e) => e.failureNel
+            }
+          case (Some(JString(eventType)), None) =>
+            ClassicEvent(eventType).success
+          case _ =>
+            "Object ${compact(json)} cannot be deserialized to EventSkip".toProcessingMessage.failureNel
+        }
     }
 }
