@@ -71,6 +71,7 @@ object KinesisEnrich extends Enrich {
       adapterRegistry = new AdapterRegistry(prepareRemoteAdapters(enrichConfig.remoteAdapters))
       source <- getSource(enrichConfig.streams, resolver, adapterRegistry, enrichmentRegistry, tracker)
     } yield (tracker, source)
+
     trackerSource match {
       case Failure(e) =>
         System.err.println(e)
@@ -164,10 +165,10 @@ object KinesisEnrich extends Enrich {
         val file = new File(filepath)
         if (file.exists) Source.fromFile(file).mkString.success
         else "Iglu resolver configuration file \"%s\" does not exist".format(filepath).failure
-      case DynamoDBRegex(endpoint, table, key) => //double check
+      case DynamoDBRegex(region, table, key) =>
         for {
           provider <- getProvider(creds).validation
-          resolver <- lookupDynamoDBResolver(provider, endpoint, table, key)
+          resolver <- lookupDynamoDBResolver(provider, region, table, key)
         } yield resolver
       case _ => s"Resolver argument [$resolverArgument] must match $regexMsg".failure
     }
@@ -183,14 +184,14 @@ object KinesisEnrich extends Enrich {
    */
   private def lookupDynamoDBResolver(
     provider: AWSCredentialsProvider,
-    endpoint: String,
+    region: String,
     table: String,
     key: String
   ): Validation[String, String] = {
     val dynamoDBClient = AmazonDynamoDBClientBuilder
       .standard()
       .withCredentials(provider)
-      .withEndpointConfiguration(new EndpointConfiguration(endpoint, endpoint))
+      .withEndpointConfiguration(new EndpointConfiguration(getDynamodbEndpoint(region), region))
       .build()
     val dynamoDB = new DynamoDB(dynamoDBClient)
     for {
@@ -213,10 +214,10 @@ object KinesisEnrich extends Enrich {
             .map(scala.io.Source.fromFile(_).mkString)
             .toList
             .success
-        case DynamoDBRegex(endpoint, table, keyNamePrefix) =>
+        case DynamoDBRegex(region, table, keyNamePrefix) =>
           for {
             provider <- getProvider(creds).validation
-            enrichmentList = lookupDynamoDBEnrichments(provider, endpoint, table, keyNamePrefix)
+            enrichmentList = lookupDynamoDBEnrichments(provider, region, table, keyNamePrefix)
             enrichments <- enrichmentList match {
               case Nil => s"No enrichments found with prefix $keyNamePrefix".failure
               case js  => js.success
@@ -244,14 +245,14 @@ object KinesisEnrich extends Enrich {
    */
   private def lookupDynamoDBEnrichments(
     provider: AWSCredentialsProvider,
-    endpoint: String,
+    region: String,
     table: String,
     keyNamePrefix: String
   ): List[String] = {
     val dynamoDBClient = AmazonDynamoDBClientBuilder
       .standard()
       .withCredentials(provider)
-      .withEndpointConfiguration(new EndpointConfiguration(endpoint, endpoint))
+      .withEndpointConfiguration(new EndpointConfiguration(getDynamodbEndpoint(region), region))
       .build()
 
     // Each scan can only return up to 1MB
@@ -311,5 +312,9 @@ object KinesisEnrich extends Enrich {
     } yield provider
   }
 
-
+  private def getDynamodbEndpoint(region: String): String =
+    region match {
+      case cn @ "cn-north-1" => s"https://dynamodb.$cn.amazonaws.com.cn"
+      case _                 => s"https://dynamodb.$region.amazonaws.com"
+    }
 }
